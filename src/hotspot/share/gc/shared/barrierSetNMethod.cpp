@@ -39,6 +39,9 @@
 #include "runtime/threadWXSetters.inline.hpp"
 #include "runtime/threads.hpp"
 #include "utilities/debug.hpp"
+#if INCLUDE_JVMCI
+#include "jvmci/jvmciRuntime.hpp"
+#endif
 
 int BarrierSetNMethod::disarmed_guard_value() const {
   return *disarmed_guard_value_address();
@@ -62,11 +65,17 @@ bool BarrierSetNMethod::supports_entry_barrier(nmethod* nm) {
     return false;
   }
 
-  if (!nm->is_native_method() && !nm->is_compiled_by_c2() && !nm->is_compiled_by_c1()) {
-    return false;
+  if (nm->is_native_method() || nm->is_compiled_by_c2() || nm->is_compiled_by_c1()) {
+    return true;
   }
 
-  return true;
+#if INCLUDE_JVMCI
+  if (nm->is_compiled_by_jvmci() && nm->jvmci_nmethod_data()->has_entry_barrier()) {
+    return true;
+  }
+#endif
+
+  return false;
 }
 
 void BarrierSetNMethod::disarm(nmethod* nm) {
@@ -147,7 +156,7 @@ void BarrierSetNMethod::arm_all_nmethods() {
   BarrierSetNMethodArmClosure cl(_current_phase);
   Threads::threads_do(&cl);
 
-#if (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
+#if defined(RISCV64) && !defined(ZERO)
   // We clear the patching epoch when disarming nmethods, so that
   // the counter won't overflow.
   BarrierSetAssembler::clear_patching_epoch();
